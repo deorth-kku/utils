@@ -4,7 +4,6 @@ import xmlrpc.client
 import time
 import subprocess
 from copy import copy
-from pprint import pprint
 import logging
 try:
     import requests
@@ -13,17 +12,66 @@ except ImportError:
 
 
 class DownloadError(Exception):
-    def __init__(self, status):
+    def __init__(self, msg: str) -> None:
         Exception.__init__(self)
-        self.message = "Download failed, Download task is %s" % status
+        self.message = "Download failed, error message \"%s\"" % msg
 
-    def __str__(self):
+    def __str__(self) -> str:
         return repr(self.message)
+
+
+class Aria2Task():
+    def __init__(self, gid: str, rpc_obj) -> None:
+        self.rpc = rpc_obj  # Aria2Rpc object
+        self.gid = gid
+
+    def __getattr__(self, name):
+        def __defaultMethod(*args):
+            newargs = (self.gid,) + args
+            method = getattr(self.rpc, name)
+            return method(*newargs)
+        return __defaultMethod
+
+    def __str__(self) -> str:
+        return self.gid
+
+    def __bool__(self) -> bool:
+        return self.is_running()
+
+    def retry(self, remove_failed_task: bool = True) -> bool:
+        r = self.tellStatus()
+        status = r["status"]
+        if status == "error":
+            if len(r["files"]) != 1:
+                raise ValueError("No support for bittorrent/magnet for now")
+            urls = [url["uri"] for url in r["files"][0]["uris"]]
+            urls = list(set(urls))
+            options = self.getOption()
+            if remove_failed_task:
+                rsp = self.removeDownloadResult()
+                logging.debug("removed failed task gid %s %s" %
+                              (self.gid, rsp))
+            rsp = self.rpc.addUri(urls, options)
+            logging.info("retry failed task %s as new task %s" %
+                         (self.gid, rsp))
+            self.gid = rsp
+
+    def is_running(self) -> bool:
+        status = self.get_status()
+        logging.debug("task gid %s status is %s" % (self.gid, status))
+        if status in ("running", "waiting", "paused"):
+            return True
+        else:
+            return False
+
+    def get_status(self) -> str:
+        status = self.tellStatus()['status']
+        return status
 
 
 class Aria2Rpc():
     @staticmethod
-    def progressBar(current, total, speed):
+    def progressBar(current: int, total: int, speed: int, end="\r"):
         if total == 0:
             total = 1
         if current > total:
@@ -44,28 +92,29 @@ class Aria2Rpc():
         else:
             bar = " |"+"██"*n+list[i]+"  "*(19-n)+"| "
         print(bar+percent+"  "+str(round(current/1048756, 1))+"MB/" +
-              str(round(total/1048756, 1))+"MB "+speed+"      ", end="\r")
+              str(round(total/1048756, 1))+"MB "+speed+"      ", end=end)
 
     @staticmethod
-    def readAria2Conf(conf_path):
+    def readAria2Conf(conf_path: str) -> dict:
         conf = {}
         f = open(conf_path, "r")
         for line in f.readlines():
             line = line.split(r"#")[0]
             kv = line.split(r"=")
             if len(kv) == 2:
-                conf.update({line[0]: line[1]})
+                conf.update({kv[0]: kv[1]})
             else:
                 continue
         f.close()
+        return conf
 
     bin_path = "aria2c"
 
     @classmethod
-    def setAria2Bin(cls, bin_path):
+    def setAria2Bin(cls, bin_path: str) -> None:
         cls.bin_path = bin_path
 
-    def __init__(self, ip: str = "127.0.0.1", port: int = 6800, passwd: str = "", api: str = "xmlrpc", args={}):  # rework to use **kwargs
+    def __init__(self, ip: str = "127.0.0.1", port: int = 6800, passwd: str = "", api: str = "xmlrpc", **kwargs) -> None:  # rework to use **kwargs
         self.tasks = []
         self.api = api
         self.secret = "token:"+passwd
@@ -81,28 +130,32 @@ class Aria2Rpc():
             self.getVersion()
         except ConnectionRefusedError:
             if ip == "127.0.0.1" or ip == "localhost" or ip == "127.1":
-                cmd = [
-                    self.bin_path,
-                    "--no-conf",
-                    "--enable-rpc=true",
-                    "--rpc-allow-origin-all=true",
-                    "--rpc-listen-port=%s" % port
-                ]
-                for arg in args:
-                    if len(arg) != 1:
-                        arg_str = "--%s=%s" % (arg, args[arg])
-                    else:
-                        arg_str = "-%s=%s" % (arg, args[arg])
-                    cmd.append(arg_str)
-                if passwd != "":
-                    cmd.append("--rpc-secret=%s" % passwd)
-                self.process = subprocess.Popen(
-                    cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                self.config=kwargs
+                self.config.update({
+                    "rpc_listen_port":port,
+                    "rpc_secret":passwd,
+                    "enable_rpc":"true"
+                })
+                self.start()
             else:
                 raise
-        except (xmlrpc.client.Fault,AttributeError):
+        except (xmlrpc.client.Fault, AttributeError):
             logging.error("aria2 rpc password ircorrect")
             raise ValueError("password ircorrect")
+
+
+    def start(self)->None:
+        cmd = [self.bin_path,"--no-conf"]
+        for arg in self.config:
+            if len(arg) > 1:
+                arg_str = "--%s=%s" % (arg.replace("_","-"), self.config[arg])
+            else:
+                arg_str = "-%s=%s" % (arg.replace("_","-"), self.config[arg])
+            cmd.append(arg_str)
+        self.process = subprocess.Popen(
+            cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        self.process.cmd=" ".join(cmd)
+        logging.debug("started subrprocess cmd %s, pid %s"%(self.process.cmd,self.process.pid))
 
     def __getattr__(self, name):
         def __defaultMethod(*args):
@@ -115,24 +168,23 @@ class Aria2Rpc():
                     raise AttributeError(e)
             elif self.api == "jsonrpc":
                 jsonreq = {
-                        'jsonrpc': '2.0', 
-                        'id': 'Aria2Rpc',
-                        'method': 'aria2.'+name,
-                        'params': newargs
-                        }
+                    'jsonrpc': '2.0',
+                    'id': 'Aria2Rpc',
+                    'method': 'aria2.'+name,
+                    'params': newargs
+                }
                 try:
-                    rsp=requests.post(url=self.connection_url,json=jsonreq)
+                    rsp = requests.post(url=self.connection_url, json=jsonreq)
                 except requests.exceptions.ConnectionError as e:
                     raise ConnectionRefusedError(e)
-                jsonrsp=rsp.json()
+                jsonrsp = rsp.json()
                 if "result" in jsonrsp:
                     return jsonrsp["result"]
                 raise AttributeError(jsonrsp["error"])
-                
 
         return __defaultMethod
 
-    def download(self, url: str, pwd: str, filename: str = None, proxy: str = "", **raw_opts):
+    def download(self, url: str, pwd: str, filename: str = None, proxy: str = "", **raw_opts) -> Aria2Task:
         opts = {
             "dir": pwd,
             "all-proxy": proxy
@@ -149,56 +201,49 @@ class Aria2Rpc():
         self.tasks.append(task)
         return task
 
-    def wget(self, url: str, pwd: str, filename: str = None, retry: int = 5, proxy: str = "", del_failed_task: bool = True, **raw_opts):
-        full_retry = copy(retry)
-        task = False
+    def wget(self, url: str, pwd: str, filename: str = None, retry: int = 5, proxy: str = "", remove_failed_task: bool = True, refresh_interval: float = 0.1, **raw_opts) -> Aria2Task:
+        retry_left = copy(retry)
+        task = self.download(url, pwd, filename, proxy=proxy, **raw_opts)
         while True:
-            if del_failed_task and task:
-                task.removeDownloadResult()
-            task = self.download(url, pwd, filename, proxy=proxy, **raw_opts)
-            status = task.tellStatus()['status']
-            while status == 'active' or status == 'paused':
-                time.sleep(0.1)
-                r = task.tellStatus()
-                status = r['status']
-                self.__class__.progressBar(int(r['completedLength']), int(
-                    r['totalLength']), int(r['downloadSpeed']))
-            if status != 'complete':
-                if retry <= 0:
+            r = task.tellStatus()
+            status = r['status']
+            if status == "error":
+                if retry_left <= 0:
+                    logging.error("download task %s error after %s retry, error message %s" % (
+                        task.gid, retry, r["errorMessage"]))
                     raise DownloadError(r["errorMessage"])
                 else:
-                    retry -= 1
-                    print("%s, gonna retry %s/%s" %
-                          (r["errorMessage"], full_retry-retry, full_retry))
-                    time.sleep(1)
-                    continue
+                    logging.warning("%s, gonna retry %s/%s" %
+                                    (r["errorMessage"], retry-retry_left+1, retry))
+                    task.retry(remove_failed_task)
+                    retry_left -= 1
+            elif status in ("active", "paused", "waiting"):
+                self.__class__.progressBar(int(r['completedLength']), int(
+                    r['totalLength']), int(r['downloadSpeed']))
+                time.sleep(refresh_interval)
+            elif status == "complete":
+                logging.debug("task %s complete" % task.gid)
+                self.__class__.progressBar(int(r['completedLength']), int(
+                    r['totalLength']), int(r['downloadSpeed']), end="\n")
+                return task
+            elif status == "removed":
+                logging.warning("task %s removed by user, exiting" % task.gid)
+                return task
             else:
-                break
+                error_str = "undefined status %s" % status
+                logging.critical(error_str)
+                raise ValueError(error_str)
+
 
     def quit(self):
-        try:
-            self.process.terminate()
+        if "process" in self.__dict__:
+            logging.debug("calling shutdown for aria2 at port %s"%self.config["rpc_listen_port"])
+            self.shutdown()
             self.process.wait()
-        except AttributeError:
-            pass
-
-
-class Aria2Task():
-    def __init__(self, gid: str, rpc_obj: Aria2Rpc) -> None:
-        self.rpc = rpc_obj
-        self.gid = gid
-
-    def __getattr__(self, name):
-        def __defaultMethod(*args):
-            newargs = (self.gid,) + args
-            method = getattr(self.rpc, name)
-            return method(*newargs)
-        return __defaultMethod
-
-    def retry(self, del_failed_task: bool = True):
-        pass
+            logging.info("subprocess shutdown success, cmd %s, pid %s"%(self.process.cmd,self.process.pid))
 
 
 if __name__ == "__main__":
-    a=Aria2Rpc(passwd="pandownload",api="jsonrpc")
-    a.wget("http://baidu.com",pwd="/mnt/temp")
+    a = Aria2Rpc(passwd="abc", port=12341,api="jsonrpc")
+    a.wget("http://baidu.com/123", pwd="/mnt/temp")
+    a.quit()
