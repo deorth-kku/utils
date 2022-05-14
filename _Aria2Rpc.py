@@ -1,4 +1,5 @@
 #!/bin/python3
+import os
 import logging
 import xmlrpc.client
 import time
@@ -69,10 +70,14 @@ class Aria2Task():
         status = self.tellStatus()['status']
         return status
 
+    def wait(self, interval: int = 1) -> None:
+        while self.is_running():
+            time.sleep(interval)
+
 
 class Aria2Rpc():
     @staticmethod
-    def progressBar(current: int, total: int, speed: int, end="\r"):
+    def progressBar(current: int, total: int, speed: int) -> None:
         if total == 0:
             total = 1
         if current > total:
@@ -92,8 +97,12 @@ class Aria2Rpc():
             bar = " |"+"██"*n+"| "
         else:
             bar = " |"+"██"*n+list[i]+"  "*(19-n)+"| "
-        print(bar+percent+"  "+str(round(current/1048756, 1))+"MB/" +
-              str(round(total/1048756, 1))+"MB "+speed+"      ", end=end)
+        out_str = bar+percent+"  " + \
+            str(round(current/1048756, 1))+"MB/" + \
+            str(round(total/1048756, 1))+"MB "+speed
+        width = os.get_terminal_size().columns
+        space_num = width-len(out_str)-1
+        print("\r"+out_str+" "*space_num, end="")
 
     @staticmethod
     def readAria2Conf(conf_path: str) -> dict:
@@ -111,6 +120,17 @@ class Aria2Rpc():
 
     bin_path = "aria2c"
 
+    @staticmethod
+    def kwargs_process(kwargs: dict) -> dict:
+        new_args = {}
+        for key in kwargs:
+            new_key = key.replace("_", "-")
+            value = kwargs[key]
+            if type(value) == bool:
+                value = str(value).lower()
+            new_args.update({new_key: value})
+        return new_args
+
     @classmethod
     def setAria2Bin(cls, bin_path: str) -> None:
         cls.bin_path = bin_path
@@ -119,6 +139,7 @@ class Aria2Rpc():
         self.tasks = []
         self.api = api
         self.secret = "token:"+passwd
+        self.config = kwargs
         if api == "xmlrpc":
             connection = xmlrpc.client.ServerProxy(
                 "%s://%s:%s/rpc" % (protocal, host, port))
@@ -133,11 +154,10 @@ class Aria2Rpc():
             if host in ("127.0.0.1", "localhost", "127.1"):
                 logging.warning(
                     "Failed to connect aria2 rpc at port %s, starting aria2 subprocess now" % port)
-                self.config = kwargs
                 self.config.update({
                     "rpc_listen_port": port,
                     "rpc_secret": passwd,
-                    "enable_rpc": "true"
+                    "enable_rpc": True
                 })
                 self.start()
             else:
@@ -177,16 +197,14 @@ class Aria2Rpc():
 
         return __defaultMethod
 
-    def __exit__(self, exc_type, exc_value, traceback):
-        self.quit()
-
     def start(self) -> None:
         cmd = [self.bin_path, "--no-conf"]
-        for arg in self.config:
+        args = self.__class__.kwargs_process(self.config)
+        for arg in args:
             if len(arg) > 1:
-                arg_str = "--%s=%s" % (arg.replace("_", "-"), self.config[arg])
+                arg_str = "--%s=%s" % (arg, args[arg])
             else:
-                arg_str = "-%s=%s" % (arg.replace("_", "-"), self.config[arg])
+                arg_str = "-%s=%s" % (arg, args[arg])
             cmd.append(arg_str)
         self.process = subprocess.Popen(
             cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -202,26 +220,36 @@ class Aria2Rpc():
         logging.critical(
             "cannot connect to aria rpc after 1s, please check your args %s" % self.config)
 
-    def download(self, url: str, pwd: str, filename: str = None, proxy: str = "", **raw_opts) -> Aria2Task:
-        opts = {
-            "dir": pwd,
-            "all-proxy": proxy
-        }
-        for key in raw_opts:
-            new_key = key.replace("_", "-")
-            value = raw_opts[key]
-            if type(value) == bool:
-                value = str(value).lower()
-            opts.update({new_key: value})
-        if filename != None:
-            opts.update({"out": filename})
+    def download(self, url: list, pwd: str = None, filename: str = None, proxy: str = None, **raw_opts) -> Aria2Task:
+        # use session config
+        if "process" in self.__dict__:
+            task_opts = {}
+        else:
+            task_opts = self.__class__.kwargs_process(self.config)
 
-        req = self.addUri([url], opts)
+        # convert url or urls addUri
+        if type(url) == str:
+            url = [url]
+
+        # old args compatiblity
+        method_opts = {
+            "dir": pwd,
+            "all-proxy": proxy,
+            "out": filename
+        }
+        for opt in method_opts:
+            if method_opts[opt] != None:
+                task_opts.update({opt: method_opts[opt]})
+
+        # process raw args for addUri format
+        task_opts.update(self.__class__.kwargs_process(raw_opts))
+
+        req = self.addUri(url, task_opts)
         task = Aria2Task(req, self)
         self.tasks.append(task)
         return task
 
-    def wget(self, url: str, pwd: str, filename: str = None, retry: int = 5, proxy: str = "", remove_failed_task: bool = True, refresh_interval: float = 0.1, **raw_opts) -> Aria2Task:
+    def wget(self, url: str, pwd: str = None, filename: str = None, retry: int = 5, proxy: str = None, remove_failed_task: bool = True, refresh_interval: float = 0.1, **raw_opts) -> Aria2Task:
         retry_left = copy(retry)
         task = self.download(url, pwd, filename, proxy=proxy, **raw_opts)
         while True:
@@ -244,16 +272,16 @@ class Aria2Rpc():
             elif status == "complete":
                 logging.debug("task %s complete" % task.gid)
                 self.__class__.progressBar(int(r['completedLength']), int(
-                    r['totalLength']), int(r['downloadSpeed']), end="\n")
+                    r['totalLength']), int(r['downloadSpeed']))
                 return task
             elif status == "removed":
-                error_str = "task %s removed by user, exiting" % task.gid
-                logging.warning(error_str)
-                raise RuntimeError(error_str)
+                error_msg = "task %s removed by user, exiting" % task.gid
+                logging.warning(error_msg)
+                raise RuntimeError(error_msg)
             else:
-                error_str = "undefined status %s" % status
-                logging.critical(error_str)
-                raise ValueError(error_str)
+                error_msg = "undefined status %s" % status
+                logging.critical(error_msg)
+                raise ValueError(error_msg)
 
     def quit(self):
         if "process" in self.__dict__:
@@ -274,15 +302,37 @@ class Aria2Rpc():
 
 
 if __name__ == "__main__":
+    # Test for Aria2Rpc, if this throw some uncaught error, it means something is wrong.
+    # Set logs first
     from _Log import my_log_settings
     my_log_settings()
-    a = Aria2Rpc(host="127.0.0.1", protocal="http",
-                 passwd="abc", port=6801, api="xmlrpc")
+
+    temp_dir = "/mnt/temp"
+    dl_url = "https://www.baidu.com/index.html"
+    # Start one on 6801
+    a = Aria2Rpc(host="127.0.0.1", protocal="http", passwd="abc", port=6801, allow_overwrite=True,
+                 rpc_listen_all=True, rpc_allow_origin_all=True, auto_file_renaming=False)
+    # Remove download file if exists
+    download_file = os.path.join(temp_dir, os.path.basename(dl_url))
+    if os.path.exists(download_file):
+        os.remove(download_file)
+    # A normal test download, this should not be a problem, unless dl_url is invaild.
+    a.wget(dl_url, dir=temp_dir)
+    # Now check again
+    logging.debug("check if download file %s exists: %s" %
+                  (download_file, os.path.exists(download_file)))
+    # now download again, since we set allow_overwrite=True on start, this shouldn't be a problem either.
+    a.wget(dl_url, dir=temp_dir)
+
+    # Now we connect to last create aria2 process, but added option allow_overwrite=False, to test if it raise error. To test more potential problem, we use jsonrpc this time.
+    b = Aria2Rpc(passwd="abc", port=6801, api="jsonrpc", allow_overwrite=False)
+    # Try download the same file
     try:
-        a.wget("http://baidfdu.com/123123123123",
-               pwd="/mnt/temp", allow_overwrite="false", retry=1)
-    except Exception as e:
-        logging.critical(e)
-        raise
-    finally:
-        a.quit()
+        b.wget(dl_url, dir=temp_dir, retry=0)
+    except DownloadError as e:
+        # Check log if aria2 tell us there is a duplicate file
+        logging.debug(e)
+
+    # Tell aria2 to exit gracefully, remove temp file also
+    os.remove(download_file)
+    a.quit()
