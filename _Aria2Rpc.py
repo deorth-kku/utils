@@ -77,30 +77,41 @@ class Aria2Task():
 
 class Aria2Rpc():
     @staticmethod
+    def unitconv(unit_Bytes:int)->str:
+        if unit_Bytes < 1048756:
+            num=unit_Bytes/1024
+            out="%.2fKB"%num
+        else:
+            num=unit_Bytes/1048756
+            out="%.2fMB"%num
+        return out
+        
+
+    @staticmethod
     def progressBar(current: int, total: int, speed: int) -> None:
         if total == 0:
             total = 1
         if current > total:
             current = total
-        current = current
-        total = total
-        if speed < 1048756:
-            speed = str(int(speed/1024))+"KB/S "
-        else:
-            speed = str(round(speed/1048756, 2))+"MB/S"
-        per = round(current/total*100, 1)
-        percent = str(per)+"%"
-        n = int(per/5)
-        i = int(per % 5)
-        list = ['  ', '▍ ', '▊ ', '█ ', '█▍']
-        if per == 100:
-            bar = " |"+"██"*n+"| "
-        else:
-            bar = " |"+"██"*n+list[i]+"  "*(19-n)+"| "
-        out_str = bar+percent+"  " + \
-            str(round(current/1048756, 1))+"MB/" + \
-            str(round(total/1048756, 1))+"MB "+speed
+
+        speed_str=Aria2Rpc.unitconv(speed)+"/S"
+        current_str=Aria2Rpc.unitconv(current)
+        total_str=Aria2Rpc.unitconv(total)
+        percent=current/total*100
+        percent_str = "%.0f%%"%percent
+        
         width = os.get_terminal_size().columns
+
+        bar_width=width-40
+        if bar_width <=0:
+            bar=""
+        else:
+            bar_used=int(bar_width*(percent/100))
+            bar_space=bar_width-bar_used
+            bar="[%s%s]"%("█"*bar_used," "*bar_space)
+
+        out_str="%s %s %s/%s %s"%(bar,percent_str,current_str,total_str,speed_str)
+        
         space_num = width-len(out_str)-1
         print("\r"+out_str+" "*space_num, end="")
 
@@ -128,6 +139,8 @@ class Aria2Rpc():
             value = kwargs[key]
             if type(value) == bool:
                 value = str(value).lower()
+            elif value == None:
+                continue
             new_args.update({new_key: value})
         return new_args
 
@@ -135,10 +148,10 @@ class Aria2Rpc():
     def setAria2Bin(cls, bin_path: str) -> None:
         cls.bin_path = bin_path
 
-    def __init__(self, host: str = "127.0.0.1", port: int = 6800, passwd: str = "", protocal: str = "http", api: str = "xmlrpc", **kwargs) -> None:  # rework to use **kwargs
+    def __init__(self, host: str = "127.0.0.1", port: int = 6800, passwd: str = None, protocal: str = "http", api: str = "xmlrpc", **kwargs) -> None:  # rework to use **kwargs
         self.tasks = []
         self.api = api
-        self.secret = "token:"+passwd
+        self.secret = "token:%s"%passwd
         self.config = kwargs
         if api == "xmlrpc":
             connection = xmlrpc.client.ServerProxy(
@@ -167,8 +180,12 @@ class Aria2Rpc():
             raise ValueError("password ircorrect")
 
     def __getattr__(self, name):
+
         def __defaultMethod(*args):
-            newargs = (self.secret,) + args
+            if self.secret == "token:None":
+                newargs=args
+            else:
+                newargs = (self.secret,) + args
             if self.api == "xmlrpc":
                 method = getattr(self.aria2, name)
                 try:
@@ -308,31 +325,35 @@ if __name__ == "__main__":
     my_log_settings()
 
     temp_dir = "/mnt/temp"
-    dl_url = "https://www.baidu.com/index.html"
+    dl_url = "https://github.com/PDModdingCommunity/PD-Loader/releases/download/2.6.5a-r4n/PD-Loader-2.6.5a-r4.zip"
     # Start one on 6801
     a = Aria2Rpc(host="127.0.0.1", protocal="http", passwd="abc", port=6801, allow_overwrite=True,
                  rpc_listen_all=True, rpc_allow_origin_all=True, auto_file_renaming=False)
-    # Remove download file if exists
-    download_file = os.path.join(temp_dir, os.path.basename(dl_url))
-    if os.path.exists(download_file):
-        os.remove(download_file)
-    # A normal test download, this should not be a problem, unless dl_url is invaild.
-    a.wget(dl_url, dir=temp_dir)
-    # Now check again
-    logging.debug("check if download file %s exists: %s" %
-                  (download_file, os.path.exists(download_file)))
-    # now download again, since we set allow_overwrite=True on start, this shouldn't be a problem either.
-    a.wget(dl_url, dir=temp_dir)
-
-    # Now we connect to last create aria2 process, but added option allow_overwrite=False, to test if it raise error. To test more potential problem, we use jsonrpc this time.
-    b = Aria2Rpc(passwd="abc", port=6801, api="jsonrpc", allow_overwrite=False)
-    # Try download the same file
     try:
-        b.wget(dl_url, dir=temp_dir, retry=0)
-    except DownloadError as e:
-        # Check log if aria2 tell us there is a duplicate file
-        logging.debug(e)
+        # Remove download file if exists
+        download_file = os.path.join(temp_dir, os.path.basename(dl_url))
+        if os.path.exists(download_file):
+            os.remove(download_file)
+        # A normal test download, this should not be a problem, unless dl_url is invaild.
+        a.wget(dl_url, dir=temp_dir)
+        # Now check again
+        logging.debug("check if download file %s exists: %s" %
+                    (download_file, os.path.exists(download_file)))
+        # now download again, since we set allow_overwrite=True on start, this shouldn't be a problem either.
+        a.wget(dl_url, dir=temp_dir)
 
-    # Tell aria2 to exit gracefully, remove temp file also
-    os.remove(download_file)
-    a.quit()
+        # Now we connect to last create aria2 process, but added option allow_overwrite=False, to test if it raise error. To test more potential problem, we use jsonrpc this time.
+        b = Aria2Rpc(passwd="abc", port=6801, api="jsonrpc", allow_overwrite=False)
+        # Try download the same file
+        try:
+            b.wget(dl_url, dir=temp_dir, retry=0)
+        except DownloadError as e:
+            # Check log if aria2 tell us there is a duplicate file
+            logging.debug(e)
+
+        # Tell aria2 to exit gracefully, remove temp file also
+        os.remove(download_file)
+    except (KeyboardInterrupt,Exception):
+        raise
+    finally:
+        a.quit()
