@@ -1,5 +1,5 @@
 #!/bin/python3
-from email import generator
+from typing import Generator
 import logging
 import os
 from importlib import reload, import_module
@@ -27,7 +27,7 @@ class Decompress():
         self.filename = filename
         self.filelist = list(self.getFileList())
 
-    def getFileList(self) -> generator:
+    def getFileList(self) -> Generator:
         with self.libarchive.file_reader(self.filename) as archive:
             for entry in archive:
                 yield str(entry)
@@ -48,7 +48,7 @@ class Decompress():
         self.libarchive.extract.extract_entries(entries)
         os.chdir(pwd_temp)
 
-    def select_entries_with_names(self, filenames: list) -> generator:
+    def select_entries_with_names(self, filenames: list) -> Generator:
         with self.libarchive.file_reader(self.filename) as archive:
             for entry in archive:
                 if entry.name in filenames:
