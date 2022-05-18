@@ -23,7 +23,7 @@ class DownloadError(Exception):
 
 
 class Aria2Task():
-    def __init__(self, gid: str, rpc_obj) -> None:
+    def __init__(self, gid: str, rpc_obj: object) -> None:
         self.rpc = rpc_obj  # Aria2Rpc object
         self.gid = gid
 
@@ -40,7 +40,13 @@ class Aria2Task():
     def __bool__(self) -> bool:
         return self.is_running()
 
-    def retry(self, remove_failed_task: bool = True) -> bool:
+    def __eq__(self, __o: object) -> bool:
+        return self.gid == __o.gid and self.rpc == __o.rpc
+
+    def __hash__(self) -> int:
+        return hash(self.gid)
+
+    def retry(self, remove_failed_task: bool = True) -> object:
         r = self.tellStatus()
         status = r["status"]
         if status == "error":
@@ -53,10 +59,16 @@ class Aria2Task():
                 rsp = self.removeDownloadResult()
                 logging.debug("removed failed task gid %s %s" %
                               (self.gid, rsp))
+            self.rpc.tasks.remove(self)
             rsp = self.rpc.addUri(urls, options)
             logging.info("retry failed task %s as new task %s" %
                          (self.gid, rsp))
             self.gid = rsp
+            new_task=Aria2Task(rsp,self.rpc)
+            self.rpc.tasks.add(new_task)
+            return new_task
+        else:
+            return self
 
     def is_running(self) -> bool:
         status = self.get_status()
@@ -77,15 +89,17 @@ class Aria2Task():
 
 class Aria2Rpc():
     @staticmethod
-    def unitconv(unit_Bytes:int)->str:
+    def unitconv(unit_Bytes: int) -> str:
         if unit_Bytes < 1048756:
-            num=unit_Bytes/1024
-            out="%.2fKB"%num
+            num = unit_Bytes/1024
+            out = "%.2fKB" % num
+        elif unit_Bytes < 1073741824:
+            num = unit_Bytes/1048756
+            out = "%.2fMB" % num
         else:
-            num=unit_Bytes/1048756
-            out="%.2fMB"%num
+            num = unit_Bytes/1073741824
+            out = "%.2fGB" % num
         return out
-        
 
     @staticmethod
     def progressBar(current: int, total: int, speed: int) -> None:
@@ -94,24 +108,25 @@ class Aria2Rpc():
         if current > total:
             current = total
 
-        speed_str=Aria2Rpc.unitconv(speed)+"/S"
-        current_str=Aria2Rpc.unitconv(current)
-        total_str=Aria2Rpc.unitconv(total)
-        percent=current/total*100
-        percent_str = "%.0f%%"%percent
-        
+        speed_str = Aria2Rpc.unitconv(speed)+"/S"
+        current_str = Aria2Rpc.unitconv(current)
+        total_str = Aria2Rpc.unitconv(total)
+        percent = current/total*100
+        percent_str = "%.0f%%" % percent
+
         width = os.get_terminal_size().columns
 
-        bar_width=width-40
-        if bar_width <=0:
-            bar=""
+        bar_width = width-40
+        if bar_width <= 0:
+            bar = ""
         else:
-            bar_used=int(bar_width*(percent/100))
-            bar_space=bar_width-bar_used
-            bar="[%s%s]"%("█"*bar_used," "*bar_space)
+            bar_used = int(bar_width*(percent/100))
+            bar_space = bar_width-bar_used
+            bar = "[%s%s]" % ("█"*bar_used, " "*bar_space)
 
-        out_str="%s %s %s/%s %s"%(bar,percent_str,current_str,total_str,speed_str)
-        
+        out_str = "%s %s %s/%s %s" % (bar, percent_str,
+                                      current_str, total_str, speed_str)
+
         space_num = width-len(out_str)-1
         print("\r"+out_str+" "*space_num, end="")
 
@@ -129,8 +144,6 @@ class Aria2Rpc():
         f.close()
         return conf
 
-    bin_path = "aria2c"
-
     @staticmethod
     def kwargs_process(kwargs: dict) -> dict:
         new_args = {}
@@ -144,14 +157,16 @@ class Aria2Rpc():
             new_args.update({new_key: value})
         return new_args
 
+    bin_path = "aria2c"
+
     @classmethod
     def setAria2Bin(cls, bin_path: str) -> None:
         cls.bin_path = bin_path
 
     def __init__(self, host: str = "127.0.0.1", port: int = 6800, passwd: str = None, protocal: str = "http", api: str = "xmlrpc", **kwargs) -> None:  # rework to use **kwargs
-        self.tasks = []
+        self.tasks = set()
         self.api = api
-        self.secret = "token:%s"%passwd
+        self.secret = "token:%s" % passwd
         self.config = kwargs
         if api == "xmlrpc":
             connection = xmlrpc.client.ServerProxy(
@@ -162,7 +177,7 @@ class Aria2Rpc():
         else:
             raise ValueError("Unsupported api type %s" % api)
         try:
-            self.getVersion()
+            self.sessionID = self.getSessionInfo()['sessionId']
         except ConnectionRefusedError:
             if host in ("127.0.0.1", "localhost", "127.1"):
                 logging.warning(
@@ -183,7 +198,7 @@ class Aria2Rpc():
 
         def __defaultMethod(*args):
             if self.secret == "token:None":
-                newargs=args
+                newargs = args
             else:
                 newargs = (self.secret,) + args
             if self.api == "xmlrpc":
@@ -214,6 +229,15 @@ class Aria2Rpc():
 
         return __defaultMethod
 
+    def __str__(self) -> str:
+        return self.sessionID
+
+    def __hash__(self) -> int:
+        hash(self.sessionID)
+
+    def __eq__(self, __o: object) -> bool:
+        return self.sessionID == __o.sessionID
+
     def start(self) -> None:
         cmd = [self.bin_path, "--no-conf"]
         args = self.__class__.kwargs_process(self.config)
@@ -230,7 +254,7 @@ class Aria2Rpc():
                       (self.process.cmd, self.process.pid))
         for i in range(10):
             try:
-                self.getVersion()
+                self.sessionID = self.getSessionInfo()['sessionId']
                 return
             except ConnectionError:
                 time.sleep(0.1)
@@ -261,9 +285,10 @@ class Aria2Rpc():
         # process raw args for addUri format
         task_opts.update(self.__class__.kwargs_process(raw_opts))
 
+        logging.info("Starting download %s" % url)
         req = self.addUri(url, task_opts)
         task = Aria2Task(req, self)
-        self.tasks.append(task)
+        self.tasks.add(task)
         return task
 
     def wget(self, url: str, pwd: str = None, filename: str = None, retry: int = 5, proxy: str = None, remove_failed_task: bool = True, refresh_interval: float = 0.1, **raw_opts) -> Aria2Task:
@@ -287,9 +312,9 @@ class Aria2Rpc():
                     r['totalLength']), int(r['downloadSpeed']))
                 time.sleep(refresh_interval)
             elif status == "complete":
-                logging.debug("task %s complete" % task.gid)
                 self.__class__.progressBar(int(r['completedLength']), int(
                     r['totalLength']), int(r['downloadSpeed']))
+                logging.info("task %s complete" % task.gid)
                 return task
             elif status == "removed":
                 error_msg = "task %s removed by user, exiting" % task.gid
@@ -325,7 +350,7 @@ if __name__ == "__main__":
     my_log_settings()
 
     temp_dir = "/mnt/temp"
-    dl_url = "https://github.com/PDModdingCommunity/PD-Loader/releases/download/2.6.5a-r4n/PD-Loader-2.6.5a-r4.zip"
+    dl_url = "https://www.baidu.com/index.html"
     # Start one on 6801
     a = Aria2Rpc(host="127.0.0.1", protocal="http", passwd="abc", port=6801, allow_overwrite=True,
                  rpc_listen_all=True, rpc_allow_origin_all=True, auto_file_renaming=False)
@@ -338,22 +363,23 @@ if __name__ == "__main__":
         a.wget(dl_url, dir=temp_dir)
         # Now check again
         logging.debug("check if download file %s exists: %s" %
-                    (download_file, os.path.exists(download_file)))
+                      (download_file, os.path.exists(download_file)))
         # now download again, since we set allow_overwrite=True on start, this shouldn't be a problem either.
         a.wget(dl_url, dir=temp_dir)
 
         # Now we connect to last create aria2 process, but added option allow_overwrite=False, to test if it raise error. To test more potential problem, we use jsonrpc this time.
-        b = Aria2Rpc(passwd="abc", port=6801, api="jsonrpc", allow_overwrite=False)
+        b = Aria2Rpc(passwd="abc", port=6801,
+                     api="jsonrpc", allow_overwrite=False)
         # Try download the same file
         try:
-            b.wget(dl_url, dir=temp_dir, retry=0)
+            b.wget(dl_url, dir=temp_dir, retry=1)
         except DownloadError as e:
             # Check log if aria2 tell us there is a duplicate file
             logging.debug(e)
 
         # Tell aria2 to exit gracefully, remove temp file also
         os.remove(download_file)
-    except (KeyboardInterrupt,Exception):
+    except (KeyboardInterrupt, Exception):
         raise
     finally:
         a.quit()
