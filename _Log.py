@@ -9,5 +9,6 @@ def my_log_settings(log_file: str = None, log_level: str = "DEBUG") -> None:
     logging.basicConfig(level=log_level,
                         format=LOG_FORMAT,
                         datefmt=DATE_FORMAT,
-                        filename=log_file
+                        filename=log_file,
+                        force=True
                         )
