@@ -64,7 +64,7 @@ class Aria2Task():
             logging.info("retry failed task %s as new task %s" %
                          (self.gid, rsp))
             self.gid = rsp
-            new_task=Aria2Task(rsp,self.rpc)
+            new_task = Aria2Task(rsp, self.rpc)
             self.rpc.tasks.add(new_task)
             return new_task
         else:
@@ -73,7 +73,7 @@ class Aria2Task():
     def is_running(self) -> bool:
         status = self.get_status()
         logging.debug("task gid %s status is %s" % (self.gid, status))
-        if status in ("running", "waiting", "paused"):
+        if status in ("active", "waiting", "paused"):
             return True
         else:
             return False
@@ -90,33 +90,41 @@ class Aria2Task():
 class Aria2Rpc():
     @staticmethod
     def unitconv(unit_Bytes: int) -> str:
-        if unit_Bytes < 1048756:
+        if unit_Bytes < 1024:
+            num = float(unit_Bytes)
+            unit = 'B'
+        elif unit_Bytes < 1048756:
             num = unit_Bytes/1024
-            out = "%.2fKB" % num
+            unit = 'KB'
         elif unit_Bytes < 1073741824:
             num = unit_Bytes/1048756
-            out = "%.2fMB" % num
+            unit = 'MB'
         else:
             num = unit_Bytes/1073741824
-            out = "%.2fGB" % num
+            unit = 'GB'
+        if num >= 100 or unit == 'B':
+            out = "%.0f%s" % (num, unit)
+        else:
+            out = '{0:.3}{1}'.format(num, unit)
         return out
 
     @staticmethod
     def progressBar(current: int, total: int, speed: int) -> None:
-        if total == 0:
-            total = 1
         if current > total:
             current = total
 
         speed_str = Aria2Rpc.unitconv(speed)+"/S"
         current_str = Aria2Rpc.unitconv(current)
         total_str = Aria2Rpc.unitconv(total)
-        percent = current/total*100
-        percent_str = "%.0f%%" % percent
+        if total == 0:
+            percent = float(0)
+        else:
+            percent = current/total*100
+        percent_str = "{0: >3.0f}%".format(percent)
 
         width = os.get_terminal_size().columns
 
-        bar_width = width-40
+        bar_width = width-32
         if bar_width <= 0:
             bar = ""
         else:
@@ -124,11 +132,11 @@ class Aria2Rpc():
             bar_space = bar_width-bar_used
             bar = "[%s%s]" % ("█"*bar_used, " "*bar_space)
 
-        out_str = "%s %s %s/%s %s" % (bar, percent_str,
-                                      current_str, total_str, speed_str)
-
-        space_num = width-len(out_str)-1
-        print("\r"+out_str+" "*space_num, end="")
+        space_num = width-len(bar+percent_str +
+                              current_str+total_str+speed_str)-6
+        out_str = "\r%s %s %s %s/%s %s" % (bar, percent_str,
+                                           " "*space_num, current_str, total_str, speed_str)
+        print(out_str, end="")
 
     @staticmethod
     def readAria2Conf(conf_path: str) -> dict:
@@ -190,7 +198,7 @@ class Aria2Rpc():
                 self.start()
             else:
                 raise
-        except (xmlrpc.client.Fault, AttributeError):
+        except (xmlrpc.client.Fault, RuntimeError):
             logging.error("aria2 rpc password ircorrect")
             raise ValueError("password ircorrect")
 
@@ -206,7 +214,7 @@ class Aria2Rpc():
                 try:
                     return method(*newargs)
                 except xmlrpc.client.Fault as e:
-                    raise AttributeError(e)
+                    raise RuntimeError(e)
             elif self.api == "jsonrpc":
                 jsonreq = {
                     'jsonrpc': '2.0',
@@ -225,7 +233,7 @@ class Aria2Rpc():
                 jsonrsp = rsp.json()
                 if "result" in jsonrsp:
                     return jsonrsp["result"]
-                raise AttributeError(jsonrsp["error"])
+                raise RuntimeError(jsonrsp["error"])
 
         return __defaultMethod
 
@@ -285,8 +293,8 @@ class Aria2Rpc():
         # process raw args for addUri format
         task_opts.update(self.__class__.kwargs_process(raw_opts))
 
-        logging.info("Starting download %s" % url)
         req = self.addUri(url, task_opts)
+        logging.info("Started download %s as task %s" % (url, req))
         task = Aria2Task(req, self)
         self.tasks.add(task)
         return task
@@ -327,19 +335,17 @@ class Aria2Rpc():
 
     def quit(self):
         if "process" in self.__dict__:
-            logging.debug("calling shutdown for aria2 at port %s" %
-                          self.config["rpc_listen_port"])
+            logging.debug("calling shutdown for aria2 at port %s, sessionID: %s" %
+                          (self.config["rpc_listen_port"], self.sessionID))
             self.shutdown()
             self.process.wait()
             logging.info("subprocess shutdown success, cmd %s, pid %s" %
                          (self.process.cmd, self.process.pid))
-
-    def __exit__(self):
-        logging.debug("__exit__ method for Aria2Rpc has been called")
-        return True
+            delattr(self, "process")
 
     def __del__(self):
         logging.debug("__del__ method for Aria2Rpc has been called")
+        self.quit()
         return True
 
 
