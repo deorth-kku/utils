@@ -13,6 +13,10 @@ except ImportError:
     logging.warning("requests not installed, you cannot use jsonrpc api!")
 
 
+def do_nothing(*_):
+    pass
+
+
 class DownloadError(Exception):
     def __init__(self, msg: str) -> None:
         Exception.__init__(self)
@@ -59,14 +63,12 @@ class Aria2Task():
                 rsp = self.removeDownloadResult()
                 logging.debug("removed failed task gid %s %s" %
                               (self.gid, rsp))
-            self.rpc.tasks.remove(self)
+            options.update({
+                "gid":self.gid
+            })
             rsp = self.rpc.addUri(urls, options)
-            logging.info("retry failed task %s as new task %s" %
-                         (self.gid, rsp))
-            self.gid = rsp
-            new_task = Aria2Task(rsp, self.rpc)
-            self.rpc.tasks.add(new_task)
-            return new_task
+            logging.info("retry failed task %s" %self.gid)
+            return self
         else:
             return self
 
@@ -299,9 +301,13 @@ class Aria2Rpc():
         self.tasks.add(task)
         return task
 
-    def wget(self, url: str, pwd: str = None, filename: str = None, retry: int = 5, proxy: str = None, remove_failed_task: bool = True, refresh_interval: float = 0.1, **raw_opts) -> Aria2Task:
+    def wget(self, url: str, pwd: str = None, filename: str = None, retry: int = 5, proxy: str = None, remove_failed_task: bool = True, progress_bar: bool = True, refresh_interval: float = 0.1, **raw_opts) -> Aria2Task:
         retry_left = copy(retry)
         task = self.download(url, pwd, filename, proxy=proxy, **raw_opts)
+        if progress_bar:
+            pbar = self.__class__.progressBar
+        else:
+            pbar = do_nothing
         while True:
             r = task.tellStatus()
             status = r['status']
@@ -316,11 +322,11 @@ class Aria2Rpc():
                     task.retry(remove_failed_task)
                     retry_left -= 1
             elif status in ("active", "paused", "waiting"):
-                self.__class__.progressBar(int(r['completedLength']), int(
+                pbar(int(r['completedLength']), int(
                     r['totalLength']), int(r['downloadSpeed']))
                 time.sleep(refresh_interval)
             elif status == "complete":
-                self.__class__.progressBar(int(r['completedLength']), int(
+                pbar(int(r['completedLength']), int(
                     r['totalLength']), int(r['downloadSpeed']))
                 logging.info("task %s complete" % task.gid)
                 return task
