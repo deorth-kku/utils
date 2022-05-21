@@ -36,12 +36,16 @@ class Decompress():
                 for file in filenames:
                     self.zf.extract(file, outdir)
             self.extractFiles = extractFiles
-            self.__del__=self.zf.close
+            self.__del__ = self.zf.close
 
     def getFileList(self) -> Generator:
         with self.libarchive.file_reader(self.filename) as archive:
             for entry in archive:
-                yield str(entry)
+                if type(entry.name) == bytes:
+                    logging.warning(
+                        "none-ASCII character in filename '%s', this file will not be decompressed" % entry.name.decode(errors="ignore"))
+                    continue
+                yield entry.name
 
     def getPrefixDir(self) -> str:
         self.filelist = list(self.getFileList())
@@ -76,7 +80,6 @@ class Decompress():
         os.chdir(pwd_temp)
 
 
-
 if __name__ == "__main__":
     from _Log import my_log_settings
     my_log_settings()
@@ -84,12 +87,12 @@ if __name__ == "__main__":
     a = Aria2Rpc(port=6801, passwd="abc", rpc_listen_all=True,
                  rpc_allow_origin_all=True, all_proxy="http://127.0.0.1:8123")
     temp_dir = "/mnt/temp/decompress"
-    os.makedirs(temp_dir,exist_ok=True)
+    os.makedirs(temp_dir, exist_ok=True)
     dl_urls = [
         # "https://github.com/dezem/SAK/releases/download/0.7.14/SAK_v0.7.14_64bit_20220405-19-38-49.7z",
-        #"https://github.com/PDModdingCommunity/PD-Loader/releases/download/2.6.5a-r4n/PD-Loader-2.6.5a-r4.zip",
+        # "https://github.com/PDModdingCommunity/PD-Loader/releases/download/2.6.5a-r4n/PD-Loader-2.6.5a-r4.zip",
         "http://trash.com/sukidesuost_Kagurairo Artifact F.zip"
-        #"https://somesite/7z2107-x64.exe"
+        # "https://somesite/7z2107-x64.exe"
     ]
     import time
     from _Py7z import Py7z
@@ -101,36 +104,30 @@ if __name__ == "__main__":
             a.wget(dl_url, dir=temp_dir)
 
         try:
-            out_dir="mafumafu - Kagurairo Artifact [FLAC]"
-            out_dir=os.path.join(temp_dir,out_dir)
+            out_dir = "mafumafu - Kagurairo Artifact [FLAC]"
+            out_dir = os.path.join(temp_dir, out_dir)
 
-            shutil.rmtree(out_dir,ignore_errors=True)
-            starttime=time.time()
+            shutil.rmtree(out_dir, ignore_errors=True)
+            starttime = time.time()
             f = Decompress(download_file)
             f.extractAll(temp_dir)
-            time_used=time.time()-starttime
-            logging.info("libarchive: %s"%time_used)
+            time_used = time.time()-starttime
+            logging.info("libarchive: %s" % time_used)
 
-            shutil.rmtree(out_dir,ignore_errors=True)
-            starttime=time.time()
+            shutil.rmtree(out_dir, ignore_errors=True)
+            starttime = time.time()
             f = Py7z(download_file)
             f.extractAll(temp_dir)
-            time_used=time.time()-starttime
-            logging.info("7z: %s"%time_used)
+            time_used = time.time()-starttime
+            logging.info("7z: %s" % time_used)
 
-
-            shutil.rmtree(out_dir,ignore_errors=True)
-            starttime=time.time()
+            shutil.rmtree(out_dir, ignore_errors=True)
+            starttime = time.time()
             f = Decompress(download_file, use_zipfile=True)
             f.extractAll(temp_dir)
-            time_used=time.time()-starttime
-            logging.info("zipfile: %s"%time_used)
+            time_used = time.time()-starttime
+            logging.info("zipfile: %s" % time_used)
 
-
-            
-
-
-            
         except Exception as e:
             logging.exception(e)
 
