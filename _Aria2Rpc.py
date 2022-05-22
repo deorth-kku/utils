@@ -215,6 +215,7 @@ class Aria2Rpc():
                 newargs = args
             else:
                 newargs = (self.secret,) + args
+            logging.debug("calling rpc method: %s, args: %s"%(name,str(newargs)))
             if self.api == "xmlrpc":
                 method = getattr(self.aria2, name)
                 try:
