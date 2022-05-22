@@ -64,10 +64,10 @@ class Aria2Task():
                 logging.debug("removed failed task gid %s %s" %
                               (self.gid, rsp))
             options.update({
-                "gid":self.gid
+                "gid": self.gid
             })
             rsp = self.rpc.addUri(urls, options)
-            logging.info("retry failed task %s" %self.gid)
+            logging.info("retry failed task %s" % self.gid)
             return self
         else:
             return self
@@ -145,10 +145,14 @@ class Aria2Rpc():
         conf = {}
         f = open(conf_path, "r")
         for line in f.readlines():
+            line = line.rstrip("\n")
             line = line.split(r"#")[0]
             kv = line.split(r"=")
+
             if len(kv) == 2:
-                conf.update({kv[0]: kv[1]})
+                key, value = kv
+                value = value.strip()
+                conf.update({key: value})
             else:
                 continue
         f.close()
