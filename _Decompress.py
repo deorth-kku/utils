@@ -43,20 +43,15 @@ class Decompress():
             self.reader = self.libarchive.memory_reader
             self.extracter = self.libarchive.extract_memory
 
-            pe = pefile.PE(filename)
-            last_section = pe.sections[-1]
-            pe_end = last_section.PointerToRawData+last_section.SizeOfRawData
-            logging.debug(
-                "pe file ends at %x, assume data after is 7z" % pe_end)
             f = open(filename, "rb")
-            f.seek(pe_end)
             while True:
-                if f.read(4) == b'\x37\x7a\xbc\xaf':
-                    startof7z = f.tell()-4
+                if f.read(8) == b'\x37\x7a\xbc\xaf\x27\x1c\x00\x04':
+                    f.seek(-8, 1)
+                    startof7z = f.tell()
                     logging.debug("found 7z header at 0x%x" % startof7z)
                     break
-            f.seek(-4, 1)
-            self.read_from = f.read()
+                else:
+                    f.seek(-7, 1)
             self.read_from = f.read()
         else:
             self.reader = self.libarchive.file_reader
@@ -101,7 +96,9 @@ class Decompress():
         if not os.path.exists(outdir):
             os.makedirs(outdir)
         os.chdir(outdir)
+        logging.debug("chdir to %s, starting extraction"%outdir)
         self.extracter(self.read_from)
+        logging.debug("extraction complete")
         os.chdir(pwd_temp)
 
 
