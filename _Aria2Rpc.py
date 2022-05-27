@@ -1,5 +1,5 @@
 #!/bin/python3
-import os
+import os,sys
 import logging
 import xmlrpc.client
 import time
@@ -309,9 +309,11 @@ class Aria2Rpc():
     def wget(self, url: str, pwd: str = None, filename: str = None, retry: int = 5, proxy: str = None, remove_failed_task: bool = True, progress_bar: bool = True, refresh_interval: float = 0.1, **raw_opts) -> Aria2Task:
         retry_left = copy(retry)
         task = self.download(url, pwd, filename, proxy=proxy, **raw_opts)
-        if progress_bar:
+        if progress_bar and not sys.executable.endswith("pythonw.exe"):
+            logging.debug("using progress bar")
             pbar = self.__class__.progressBar
         else:
+            logging.debug("disable progress bar")
             pbar = do_nothing
         while True:
             r = task.tellStatus()
