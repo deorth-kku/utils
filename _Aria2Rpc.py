@@ -12,9 +12,10 @@ try:
 except ImportError:
     logging.warning("requests not installed, you cannot use jsonrpc api!")
 
-
-def do_nothing(*_):
-    pass
+if __package__==None:
+    from _DoNothing import do_nothing
+else:
+    from ._DoNothing import do_nothing
 
 
 class DownloadError(Exception):

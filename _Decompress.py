@@ -4,8 +4,6 @@ import logging
 import os
 from importlib import reload, import_module
 from zipfile import ZipFile
-import pefile
-
 
 class Decompress():
     # Still 2 things needs to be done:
