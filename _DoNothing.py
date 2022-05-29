@@ -4,7 +4,7 @@ def do_nothing(*_):
     pass
 
 class DoNothing():
-    def __init__(self) -> None:
+    def __init__(self,*_) -> None:
         pass
 
     def __getattr__(self, name):
