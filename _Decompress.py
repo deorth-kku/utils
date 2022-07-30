@@ -4,7 +4,6 @@ import logging
 import os
 from importlib import reload, import_module
 from zipfile import ZipFile
-import libarchive
 
 
 class Decompress():
