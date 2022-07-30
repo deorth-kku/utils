@@ -4,17 +4,19 @@ import logging
 import os
 from importlib import reload, import_module
 from zipfile import ZipFile
+import libarchive
+
 
 class Decompress():
     libarchive = None
 
-    @classmethod
-    def setLibarchive(cls, lib_file: str) -> None:
+    @staticmethod
+    def setLibarchive(lib_file: str) -> None:
         os.environ.update({"LIBARCHIVE": lib_file})
 
     def __init__(self, filename: str, use_zipfile=False) -> None:
         self.filename = filename
-        if not os.path.isfile(os.environ.get("LIBARCHIVE")) or use_zipfile:
+        if use_zipfile or not self.load_libarchive():
             logging.warning(
                 "using build-in ZipFile library on %s because libarchive is not available or user forcing" % filename)
             self.zf = ZipFile(self.filename)
@@ -27,7 +29,6 @@ class Decompress():
             self.extractFiles = extractFiles
             self.__del__ = self.zf.close
         elif filename.endswith(".exe"):
-            self.load_libarchive()
             logging.info("input an exe file, try extracting 7z sfx")
             self.reader = self.libarchive.memory_reader
             self.extracter = self.libarchive.extract_memory
@@ -43,7 +44,6 @@ class Decompress():
                     f.seek(-7, 1)
             self.read_from = f.read()
         else:
-            self.load_libarchive()
             self.reader = self.libarchive.file_reader
             self.extracter = self.libarchive.extract_file
             self.read_from = filename
@@ -51,8 +51,15 @@ class Decompress():
     def load_libarchive(self):
         if self.libarchive:
             reload(self.libarchive)
+            return True
         else:
-            self.libarchive=import_module("libarchive")
+            try:
+                self.libarchive = import_module("libarchive")
+                return True
+            except Exception as e:
+                logging.warning("Load libarchive failed, see error below")
+                logging.exception(e)
+                return False
 
     def getFileList(self) -> Generator:
         with self.reader(self.read_from) as archive:
