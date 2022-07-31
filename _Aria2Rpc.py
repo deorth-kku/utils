@@ -312,7 +312,7 @@ class Aria2Rpc():
         task = self.download(url, pwd, filename, proxy=proxy, **raw_opts)
         try:
             os.get_terminal_size()
-        except OSError:
+        except (OSError,ValueError):
             progress_bar=False
         if progress_bar:
             logging.debug("using progress bar")
