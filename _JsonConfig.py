@@ -3,6 +3,7 @@
 import json
 from collections import UserDict
 from copy import deepcopy
+import logging
 
 class JsonConfig(UserDict):
     @staticmethod
@@ -24,52 +25,76 @@ class JsonConfig(UserDict):
         return newdict
 
     @staticmethod
-    def replace(config,var_key,var_value):
+    def replace(config, var_key, var_value):
         typeflag = type(config)
-        if typeflag==str:
+        if typeflag == str:
             if var_key == config:
                 return var_value
-            elif type(var_value)==str and var_key in config:
-                return config.replace(var_key,var_value)
+            elif type(var_value) == str and var_key in config:
+                return config.replace(var_key, var_value)
             else:
                 return config
-        elif typeflag==int or typeflag==float or typeflag==bool or config==None:
+        elif typeflag == int or typeflag == float or typeflag == bool or config == None:
             return config
-        elif typeflag==dict:
+        elif typeflag == dict:
             for key in config:
-                newvalue = JsonConfig.replace(config[key],var_key, var_value)
-                config.update({key:newvalue})
+                newvalue = JsonConfig.replace(config[key], var_key, var_value)
+                config.update({key: newvalue})
             return config
         else:
-            new=[]
+            new = []
             for key in config:
-                new_key = JsonConfig.replace(key,var_key,var_value)
+                new_key = JsonConfig.replace(key, var_key, var_value)
                 new.append(new_key)
             return typeflag(new)
 
-    
-    def __init__(self, file):
+    def __init__(self, file: str, mode="rw"):
         self.file = file
-        try:
-            with open(file, 'r',encoding='utf-8') as f:
-                self.data = json.load(f)
-        except (IOError, json.decoder.JSONDecodeError):
+        self.mode = mode
+        if mode == "w":  # write only
             self.data = {}
+        elif mode == "r":  # read only, throw error when not exist
+            self.read_file()
+        elif mode == "rw":
+            try:
+                self.read_file()
+            except FileNotFoundError:
+                logging.warning("creating not existed file %s" % self.file)
+                self.data = {}
+        else:
+            raise ValueError("Unknown mode %s" % mode)
 
+    def read_file(self):
+        with open(self.file, 'r', encoding='utf-8') as f:
+            self.data = json.load(f)
 
-    def var_replace(self,key,value):
-        self.data=self.replace(self.data,key,value)
+    def var_replace(self, key, value):
+        self.data = self.replace(self.data, key, value)
 
-    def set_defaults(self,defaults):
-        self.data=JsonConfig.mergeDict(defaults,self.data)
-
+    def set_defaults(self, defaults):
+        self.data = JsonConfig.mergeDict(defaults, self.data)
 
     def dumpconfig(self, config=None):
-        if config==None:
-            config=self.data
-        with open(self.file, "w",encoding='utf-8') as f:
+        if self.mode == "r":
+            raise ValueError(
+                "Not allow to write when opened on read-only mode")
+        if config == None:
+            config = self.data
+        with open(self.file, "w", encoding='utf-8') as f:
             json.dump(config, f, sort_keys=True,
-                      indent=4, separators=(',', ': '),ensure_ascii=False)
+                      indent=4, separators=(',', ': '), ensure_ascii=False)
+
 
 if __name__ == "__main__":
-    pass
+    from _Log import my_log_settings
+    my_log_settings()
+    # test rw on not exist file
+    JsonConfig("foobar.json", "rw").dumpconfig({"aaa": "bbb"})
+    # test r on not exist file
+    import os
+    import logging
+    os.remove("foobar.json")
+    try:
+        JsonConfig("foobar.json", "r").dumpconfig({"aaa": "bbb"})
+    except Exception as e:
+        logging.exception(e)
