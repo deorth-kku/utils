@@ -1,6 +1,23 @@
 #!/bin/python3
 import logging
 from platform import python_version_tuple
+from functools import wraps
+import click
+
+
+class MyLogSettings(object):
+    def __init__(self, log_file: str = None, log_level: str = "INFO") -> None:
+        self.log_file = log_file
+        self.log_level = log_level
+
+    def __call__(self, func):
+        @ click.option("--log-file", type=click.Path(), help='using specific log file', default=self.log_file)
+        @ click.option("--log-level", type=click.Choice(['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'], case_sensitive=False), help='using specific log level', default=self.log_level, show_default=True)
+        @wraps(func)
+        def wapper_func(log_file, log_level, *args, **kwargs):
+            my_log_settings(log_file, log_level)
+            return func(*args, **kwargs)
+        return wapper_func
 
 
 def my_log_settings(log_file: str = None, log_level: str = "DEBUG") -> None:
@@ -18,5 +35,5 @@ def my_log_settings(log_file: str = None, log_level: str = "DEBUG") -> None:
     logging.basicConfig(**kwargs)
 
 
-if __name__=="__main__":
+if __name__ == "__main__":
     pass
