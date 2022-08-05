@@ -6,13 +6,14 @@ import click
 
 
 class MyLogSettings(object):
-    def __init__(self, log_file: str = None, log_level: str = "INFO") -> None:
+    def __init__(self, log_file: str = None, log_level: str = "INFO", **kwargs) -> None:
         self.log_file = log_file
         self.log_level = log_level
+        self.other_args = kwargs
 
     def __call__(self, func):
-        @ click.option("--log-file", type=click.Path(), help='using specific log file', default=self.log_file)
-        @ click.option("--log-level", type=click.Choice(['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'], case_sensitive=False), help='using specific log level', default=self.log_level, show_default=True)
+        @ click.option("--log-file", type=click.Path(), help='using specific log file', default=self.log_file, **self.other_args)
+        @ click.option("--log-level", type=click.Choice(['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'], case_sensitive=False), help='using specific log level', default=self.log_level, **self.other_args)
         @wraps(func)
         def wapper_func(log_file, log_level, *args, **kwargs):
             my_log_settings(log_file, log_level)
