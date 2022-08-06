@@ -1,7 +1,6 @@
 #!/bin/python3
 import os
 import sys
-import platform
 import hashlib
 import logging
 from typing import Callable
@@ -11,7 +10,7 @@ from functools import wraps
 class InstanceLock(object):
     @staticmethod
     def get_temp() -> str:
-        if platform.system() == "windows":
+        if sys.platform == "win32":
             return os.getenv("TMP")
         else:
             return "/tmp"
