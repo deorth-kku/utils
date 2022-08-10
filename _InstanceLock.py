@@ -5,6 +5,7 @@ import hashlib
 import logging
 from typing import Callable
 from functools import wraps
+import psutil
 
 
 class InstanceLock(object):
@@ -48,27 +49,32 @@ class InstanceLock(object):
 
     def get_lock(self) -> int:
         if os.path.isfile(self.path):
-            logging.warning("lock file %s already existed!" % self.path)
             with open(self.path, "r") as f:
                 instance = int(f.read())
-            return instance
+            if psutil.pid_exists(instance):
+                logging.warning("Lock file %s already existed!" % self.path)
+                return instance
+            else:
+                logging.warning("Lock file %s for pid %s existed but process not existed anymore. Overwriting anyway." % (
+                    self.path, instance))
         else:
-            logging.debug("lock file %s not existed, creating" % self.path)
-            with open(self.path, "w") as f:
-                f.write(str(os.getpid()))
-                self.acquired = True
-            return False
+            logging.debug("Lock file %s not existed, creating" % self.path)
+
+        with open(self.path, "w") as f:
+            f.write(str(os.getpid()))
+            self.acquired = True
+        return False
 
     def check_exit(self) -> None:
         apid = self.get_lock()
         if apid:
             logging.error(
-                "Another Instance is running at %s, not starting" % apid)
+                "Another Instance is running at pid %s, not starting" % apid)
             self.wlf(*self.wla, **self.wlk)
 
     def release_lock(self) -> None:
         if self.acquired:
-            logging.debug("remove lock %s" % self.path)
+            logging.debug("Remove lock %s" % self.path)
             os.remove(self.path)
 
 
