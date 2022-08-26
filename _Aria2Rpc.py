@@ -1,5 +1,5 @@
 #!/bin/python3
-import os,sys
+import os
 import logging
 import xmlrpc.client
 import time
@@ -12,7 +12,7 @@ try:
 except ImportError:
     logging.warning("requests not installed, you cannot use jsonrpc api!")
 
-if __package__==None:
+if __package__ == None:
     from _DoNothing import do_nothing
 else:
     from ._DoNothing import do_nothing
@@ -216,13 +216,15 @@ class Aria2Rpc():
                 newargs = args
             else:
                 newargs = (self.secret,) + args
-            logging.debug("calling rpc method: %s, args: %s"%(name,str(newargs)))
+            logging.debug("calling rpc method: %s, args: %s" %
+                          (name, str(newargs)))
             if self.api == "xmlrpc":
                 method = getattr(self.aria2, name)
                 try:
-                    return method(*newargs)
+                    result = method(*newargs)
                 except xmlrpc.client.Fault as e:
                     raise RuntimeError(e)
+
             elif self.api == "jsonrpc":
                 jsonreq = {
                     'jsonrpc': '2.0',
@@ -240,8 +242,13 @@ class Aria2Rpc():
                     raise HTTPException(rsp.status_code, rsp.text)
                 jsonrsp = rsp.json()
                 if "result" in jsonrsp:
-                    return jsonrsp["result"]
-                raise RuntimeError(jsonrsp["error"])
+                    result = jsonrsp["result"]
+                else:
+                    raise RuntimeError(jsonrsp["error"])
+            if logging.root.isEnabledFor(logging.DEBUG):
+                logging.debug("rpc method: %s, result: %s" %
+                              (name, str(result)))
+            return result
 
         return __defaultMethod
 
@@ -312,8 +319,8 @@ class Aria2Rpc():
         task = self.download(url, pwd, filename, proxy=proxy, **raw_opts)
         try:
             os.get_terminal_size()
-        except (OSError,ValueError):
-            progress_bar=False
+        except (OSError, ValueError):
+            progress_bar = False
         if progress_bar:
             logging.debug("using progress bar")
             pbar = self.__class__.progressBar
