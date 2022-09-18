@@ -5,6 +5,7 @@ from collections import UserDict
 from copy import deepcopy
 import logging
 
+
 class JsonConfig(UserDict):
     @staticmethod
     def mergeDict(a, b):
@@ -12,7 +13,10 @@ class JsonConfig(UserDict):
         for key in b:
             typeflag = type(b[key])
             if typeflag == dict:
-                newvalue = JsonConfig.mergeDict(a[key], b[key])
+                if key in a:
+                    newvalue = JsonConfig.mergeDict(a[key], b[key])
+                else:
+                    newvalue = b[key]
             elif typeflag == set:
                 newvalue = deepcopy(a[key])
                 for bb in b[key]:
