@@ -1,34 +1,47 @@
 #!/bin/python3
-import os,sys
+import logging
+import os
+import sys
 import platform
 import subprocess
 import psutil
 
 
 class ProcessCtrl:
-    platform_info=platform.platform().split("-")
-    OS=platform_info[0].lower()
+    platform_info = platform.platform().split("-")
+    OS = platform_info[0].lower()
 
-    if OS=="windows":
-        service_type="windows"
-    elif OS=="linux":
+    if OS == "windows":
+        service_type = "windows"
+    elif OS == "linux":
         if os.path.exists("/usr/bin/systemd"):
-            service_type="systemd"
+            service_type = "systemd"
         else:
-            service_type="init"
+            service_type = "init"
     else:
-        print("not supported OS type %s"%OS)
+        print("not supported OS type %s" % OS)
 
     @staticmethod
-    def Service(service_name,command):
-        if ProcessCtrl.service_type=="windows":
-            cmd=["net",command,service_name]
-        elif ProcessCtrl.service_type=="init":
-            cmd=["service",service_name,command]
-        elif ProcessCtrl.service_type=="systemd":
-            cmd=["systemctl",command,service_name]
-        
-        subprocess.call(cmd,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+    def Service(service_name, command):
+        if ProcessCtrl.service_type == "windows":
+            cmd = ["net", command, service_name]
+        elif ProcessCtrl.service_type == "init":
+            cmd = ["service", service_name, command]
+        elif ProcessCtrl.service_type == "systemd":
+            cmd = ["systemctl", command, service_name]
+
+        subprocess.call(cmd, stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL)
+
+    @staticmethod
+    def popup_msg(msg):
+        if ProcessCtrl.OS == "windows":
+            cmd = ["msg", "/server:127.0.0.1", "*", msg]
+            subprocess.call(cmd, stdout=subprocess.DEVNULL,
+                            stderr=subprocess.DEVNULL)
+        else:
+            logging.debug("popup msg is not supported on %s (yet)" %
+                          ProcessCtrl.OS)
 
     def __init__(self, process_name, service=False):
         self.process_name = process_name
@@ -51,9 +64,15 @@ class ProcessCtrl:
         else:
             return False
 
+    def waitProc(self):
+        self.flushProc()
+        for proc in self.procs:
+            psutil_proc = psutil.Process(pid=proc.pid)
+            psutil_proc.wait()
+
     def stopProc(self):
         if self.service:
-            self.Service(self.process_name,"stop")
+            self.Service(self.process_name, "stop")
         else:
             self.flushProc()
             self.cmds = []
@@ -63,7 +82,7 @@ class ProcessCtrl:
 
     def startProc(self):
         if self.service:
-            self.Service(self.process_name,"start")
+            self.Service(self.process_name, "start")
         else:
             for cmd in self.cmds:
                 sys.path.append(cmd[1])
@@ -76,4 +95,4 @@ class ProcessCtrl:
 
 
 if __name__ == "__main__":
-	pass
+    pass
