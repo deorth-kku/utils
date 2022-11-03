@@ -8,7 +8,7 @@ import logging
 
 class JsonConfig(UserDict):
     @staticmethod
-    def mergeDict(a, b):
+    def mergeDict(a: dict, b: dict):
         newdict = deepcopy(a)
         for key in b:
             typeflag = type(b[key])
@@ -29,7 +29,7 @@ class JsonConfig(UserDict):
         return newdict
 
     @staticmethod
-    def replace(config, var_key, var_value):
+    def replace(config: dict, var_key: str, var_value: str) -> dict:
         typeflag = type(config)
         if typeflag == str:
             if var_key == config:
@@ -52,7 +52,7 @@ class JsonConfig(UserDict):
                 new.append(new_key)
             return typeflag(new)
 
-    def __init__(self, file: str, mode="rw"):
+    def __init__(self, file: str, mode: str = "rw") -> None:
         self.file = file
         self.mode = mode
         if mode == "w":  # write only
@@ -72,13 +72,13 @@ class JsonConfig(UserDict):
         with open(self.file, 'r', encoding='utf-8') as f:
             self.data = json.load(f)
 
-    def var_replace(self, key, value):
+    def var_replace(self, key: str, value: str):
         self.data = self.replace(self.data, key, value)
 
-    def set_defaults(self, defaults):
-        self.data = JsonConfig.mergeDict(defaults, self.data)
+    def set_defaults(self, defaults: dict):
+        self.data = self.mergeDict(defaults, self.data)
 
-    def dumpconfig(self, config=None):
+    def dumpconfig(self, config: dict = None):
         if self.mode == "r":
             raise ValueError(
                 "Not allow to write when opened on read-only mode")
@@ -90,15 +90,4 @@ class JsonConfig(UserDict):
 
 
 if __name__ == "__main__":
-    from _Log import my_log_settings
-    my_log_settings()
-    # test rw on not exist file
-    JsonConfig("foobar.json", "rw").dumpconfig({"aaa": "bbb"})
-    # test r on not exist file
-    import os
-    import logging
-    os.remove("foobar.json")
-    try:
-        JsonConfig("foobar.json", "r").dumpconfig({"aaa": "bbb"})
-    except Exception as e:
-        logging.exception(e)
+    pass

@@ -263,7 +263,7 @@ class Aria2Rpc():
 
     def start(self) -> None:
         cmd = [self.bin_path, "--no-conf"]
-        args = self.__class__.kwargs_process(self.config)
+        args = self.kwargs_process(self.config)
         for arg in args:
             if len(arg) > 1:
                 arg_str = "--%s=%s" % (arg, args[arg])
@@ -289,7 +289,7 @@ class Aria2Rpc():
         if "process" in self.__dict__:
             task_opts = {}
         else:
-            task_opts = self.__class__.kwargs_process(self.config)
+            task_opts = self.kwargs_process(self.config)
 
         # convert url or urls addUri
         if type(url) == str:
@@ -306,7 +306,7 @@ class Aria2Rpc():
                 task_opts.update({opt: method_opts[opt]})
 
         # process raw args for addUri format
-        task_opts.update(self.__class__.kwargs_process(raw_opts))
+        task_opts.update(self.kwargs_process(raw_opts))
 
         req = self.addUri(url, task_opts)
         logging.info("Started download %s as task %s" % (url, req))
@@ -323,7 +323,7 @@ class Aria2Rpc():
             progress_bar = False
         if progress_bar:
             logging.debug("using progress bar")
-            pbar = self.__class__.progressBar
+            pbar = self.progressBar
         else:
             logging.debug("disable progress bar")
             pbar = do_nothing

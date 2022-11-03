@@ -19,7 +19,7 @@ class InstanceLock(object):
     def __init__(self, lock_path: str = None, when_locked_func: Callable = sys.exit, *when_locked_args, **when_locked_kwargs):
         if lock_path == None:
             self.path = os.path.join(
-                self.__class__.get_temp(), hashlib.md5(__file__.encode()).hexdigest()+".lock")
+                self.get_temp(), hashlib.md5(__file__.encode()).hexdigest()+".lock")
         elif type(lock_path) == str:
             self.path = lock_path
         else:
