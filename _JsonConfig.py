@@ -4,6 +4,7 @@ import json
 from collections import UserDict
 from copy import deepcopy
 import logging
+from typing import Iterable
 
 
 class JsonConfig(UserDict):
@@ -78,15 +79,15 @@ class JsonConfig(UserDict):
     def set_defaults(self, defaults: dict):
         self.data = self.mergeDict(defaults, self.data)
 
-    def dumpconfig(self, config: dict = None):
+    def dumpconfig(self, config: dict = None, sort_keys: bool = False, indent: int = 4, separators: Iterable[str] = (',', ': '), ensure_ascii: bool = False, **kwargs):
         if self.mode == "r":
             raise ValueError(
                 "Not allow to write when opened on read-only mode")
         if config == None:
             config = self.data
         with open(self.file, "w", encoding='utf-8') as f:
-            json.dump(config, f, sort_keys=True,
-                      indent=4, separators=(',', ': '), ensure_ascii=False)
+            json.dump(config, f, sort_keys=sort_keys, indent=indent,
+                      separators=separators, ensure_ascii=ensure_ascii, **kwargs)
 
 
 if __name__ == "__main__":
