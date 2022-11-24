@@ -12,10 +12,13 @@ def log_raise(exception: Exception):
     raise exception
 
 
+LOG_FORMAT = "%(asctime)s.%(msecs)03d [%(levelname)s] %(pathname)s:%(lineno)s | %(message)s "
+DATE_FORMAT = '%Y-%m-%d %H:%M:%S'
+
+
 def my_log_settings(log_file: str = None, log_level: str = "DEBUG") -> None:
-    LOG_FORMAT = "%(asctime)s.%(msecs)03d [%(levelname)s] %(pathname)s:%(lineno)s | %(message)s "
-    DATE_FORMAT = '%Y-%m-%d %H:%M:%S'
-    log_level = eval("logging.%s" % log_level.upper())
+    log_level = eval("logging.%s" % log_level.upper()
+                     ) if log_level else logging.INFO
     kwargs = {
         "level": log_level,
         "format": LOG_FORMAT,
@@ -28,19 +31,53 @@ def my_log_settings(log_file: str = None, log_level: str = "DEBUG") -> None:
 
 
 class MyLogSettings(object):
-    def __init__(self, log_file: str = None, log_level: str = "INFO", **kwargs) -> None:
+    def __init__(self, log_file: str = None, log_level: str = None, **kwargs) -> None:
         self.log_file = log_file
         self.log_level = log_level
+        self.set_level = None
+        self.set_file = None
         self.other_args = kwargs
 
     def __call__(self, func: Callable) -> Callable:
-        @ click.option("--log-file", type=click.Path(), help='using specific log file', default=self.log_file, **self.other_args)
-        @ click.option("--log-level", type=click.Choice(['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'], case_sensitive=False), help='using specific log level', default=self.log_level, **self.other_args)
+        @click.option("--log-file", type=click.Path(), help='using specific log file', default=self.log_file, show_default="stderr", **self.other_args)
+        @click.option("--log-level", type=click.Choice(['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'], case_sensitive=False), help='using specific log level', default=self.log_level, show_default="INFO", **self.other_args)
         @wraps(func)
         def wapper_func(log_file, log_level, *args, **kwargs):
+            self.set_level = log_level
+            self.set_file = log_file
+            if log_file == "stderr":
+                log_file = None
             my_log_settings(log_file, log_level)
             return func(*args, **kwargs)
         return wapper_func
+
+    def log_reset(self, level=None, file=None):
+        '''
+        resets logging args only if each of them haven't been set in command line
+        '''
+        kwargs = {
+            "format": LOG_FORMAT,
+            "datefmt": DATE_FORMAT,
+            "force": True
+        }
+        flag = False
+        if level and self.set_level == None:
+            kwargs.update({"level": eval("logging.%s" % level.upper())})
+            flag = True
+        else:
+            level0 = eval("logging.%s" % self.set_level.upper()
+                          ) if self.set_level else logging.INFO
+            kwargs.update({"level": level0})
+        if file and self.set_file == None:
+            kwargs.update({"filename": file})
+            flag = True
+        else:
+            kwargs.update({"filename": self.set_file})
+        if flag:
+            logging.debug("resetting logging args: %s" % kwargs)
+            logging.basicConfig(**kwargs)
+        else:
+            logging.debug("skipped resetting logging")
 
 
 class ExceptionLogger(object):
