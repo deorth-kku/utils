@@ -4,6 +4,7 @@ import logging
 import os
 from importlib import reload, import_module
 from zipfile import ZipFile
+import mmap
 
 
 class Decompress():
@@ -32,16 +33,20 @@ class Decompress():
             self.reader = self.libarchive.memory_reader
             self.extracter = self.libarchive.extract_memory
 
-            f = open(filename, "rb")
+            f = open(filename, "r+b")
+            mm = mmap.mmap(f.fileno(), 0, prot=mmap.PROT_READ)
             while True:
-                if f.read(8) == b'\x37\x7a\xbc\xaf\x27\x1c\x00\x04':
-                    f.seek(-8, 1)
-                    startof7z = f.tell()
+                if mm.read(8) == b'\x37\x7a\xbc\xaf\x27\x1c\x00\x04':
+                    mm.seek(-8, 1)
+                    startof7z = mm.tell()
                     logging.debug("found 7z header at 0x%x" % startof7z)
                     break
                 else:
-                    f.seek(-7, 1)
-            self.read_from = f.read()
+                    mm.seek(-7, 1)
+
+            self.read_from = mm.read()
+            mm.close()
+            f.close()
         else:
             self.reader = self.libarchive.file_reader
             self.extracter = self.libarchive.extract_file
