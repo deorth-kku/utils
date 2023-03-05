@@ -39,8 +39,16 @@ class MyLogSettings(object):
         self.other_args = kwargs
 
     def __call__(self, func: Callable) -> Callable:
-        @click.option("--log-file", type=click.Path(), help='using specific log file', default=self.log_file, show_default="stderr", **self.other_args)
-        @click.option("--log-level", type=click.Choice(['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'], case_sensitive=False), help='using specific log level', default=self.log_level, show_default="INFO", **self.other_args)
+        if "show_default" in self.other_args:
+            file_show_default=self.other_args["show_default"]
+            level_show_default=self.other_args["show_default"]
+            self.other_args.pop("show_default")
+        else:
+            file_show_default="stderr"
+            level_show_default="INFO"
+        
+        @click.option("--log-file", type=click.Path(), help='using specific log file', default=self.log_file, show_default=file_show_default, **self.other_args)
+        @click.option("--log-level", type=click.Choice(['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'], case_sensitive=False), help='using specific log level', default=self.log_level, show_default=level_show_default, **self.other_args)
         @wraps(func)
         def wapper_func(log_file, log_level, *args, **kwargs):
             self.set_level = log_level
