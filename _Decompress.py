@@ -34,7 +34,7 @@ class Decompress():
             self.extracter = self.libarchive.extract_memory
 
             f = open(filename, "r+b")
-            mm = mmap.mmap(f.fileno(), 0, prot=mmap.PROT_READ)
+            mm = mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ)
             while True:
                 if mm.read(8) == b'\x37\x7a\xbc\xaf\x27\x1c\x00\x04':
                     mm.seek(-8, 1)
