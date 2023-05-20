@@ -11,7 +11,7 @@ try:
     from http.client import HTTPException
 except ImportError:
     logging.warning("requests not installed, you cannot use jsonrpc api!")
-
+from uuid import uuid4
 if __package__ == None:
     from _DoNothing import do_nothing
 else:
@@ -197,6 +197,9 @@ class Aria2Rpc():
             if host in ("127.0.0.1", "localhost", "127.1"):
                 logging.warning(
                     "Failed to connect aria2 rpc at port %s, starting aria2 subprocess now" % port)
+                if passwd==None:
+                    passwd=uuid4()
+                self.secret = "token:%s" % passwd
                 self.config.update({
                     "rpc_listen_port": port,
                     "rpc_secret": passwd,
