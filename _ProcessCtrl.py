@@ -5,6 +5,7 @@ import sys
 import platform
 import subprocess
 import psutil
+import ctypes
 
 
 class ProcessCtrl:
@@ -34,11 +35,11 @@ class ProcessCtrl:
                         stderr=subprocess.DEVNULL)
 
     @staticmethod
-    def popup_msg(msg):
+    def popup_msg(title,msg=None):
+        if msg == None:
+            msg = title
         if ProcessCtrl.OS == "windows":
-            cmd = ["msg", "/server:127.0.0.1", "*", msg]
-            subprocess.call(cmd, stdout=subprocess.DEVNULL,
-                            stderr=subprocess.DEVNULL)
+            return ctypes.windll.user32.MessageBoxW(0, msg, msg, 0)
         else:
             logging.debug("popup msg is not supported on %s (yet)" %
                           ProcessCtrl.OS)
