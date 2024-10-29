@@ -23,7 +23,8 @@ def my_log_settings(log_file: str = None, log_level: str = "DEBUG") -> None:
         "level": log_level,
         "format": LOG_FORMAT,
         "datefmt": DATE_FORMAT,
-        "filename": log_file
+        "filename": log_file,
+        "encoding": 'utf-8',
     }
     if int(python_version_tuple()[1]) > 7:
         kwargs.update({"force": True})
