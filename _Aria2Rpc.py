@@ -12,7 +12,7 @@ try:
 except ImportError:
     logging.warning("requests not installed, you cannot use jsonrpc api!")
 from uuid import uuid4
-if __package__ == None:
+if __package__ == "":
     from _DoNothing import do_nothing
 else:
     from ._DoNothing import do_nothing

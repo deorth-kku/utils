@@ -15,6 +15,8 @@ class Decompress():
         os.environ.update({"LIBARCHIVE": lib_file})
 
     def __init__(self, filename: str, use_zipfile=False) -> None:
+        self.f = None
+        self.mm = None
         self.filename = filename
         if use_zipfile or not self.load_libarchive():
             logging.warning(
@@ -33,24 +35,28 @@ class Decompress():
             self.reader = self.libarchive.memory_reader
             self.extracter = self.libarchive.extract_memory
 
-            f = open(filename, "r+b")
-            mm = mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ)
+            self.f = open(filename, "r+b")
+            self.mm = mmap.mmap(self.f.fileno(), 0, access=mmap.ACCESS_READ)
             while True:
-                if mm.read(8) == b'\x37\x7a\xbc\xaf\x27\x1c\x00\x04':
-                    mm.seek(-8, 1)
-                    startof7z = mm.tell()
+                if self.mm.read(8) == b'\x37\x7a\xbc\xaf\x27\x1c\x00\x04':
+                    self.mm.seek(-8, 1)
+                    startof7z = self.mm.tell()
                     logging.debug("found 7z header at 0x%x" % startof7z)
                     break
                 else:
-                    mm.seek(-7, 1)
+                    self.mm.seek(-7, 1)
 
-            self.read_from = mm.read()
-            mm.close()
-            f.close()
+            self.read_from = self.mm[startof7z:]
         else:
             self.reader = self.libarchive.file_reader
             self.extracter = self.libarchive.extract_file
             self.read_from = filename
+
+    def __del__(self):
+        if self.mm:
+            self.mm.close()
+        if self.f:
+            self.f.close()
 
     def load_libarchive(self):
         if self.libarchive:
@@ -119,7 +125,6 @@ if __name__ == "__main__":
     os.makedirs(temp_dir, exist_ok=True)
     dl_urls = [
         "https://github.com/dezem/SAK/releases/download/0.7.14/SAK_v0.7.14_64bit_20220405-19-38-49.7z",
-        "https://github.com/PDModdingCommunity/PD-Loader/releases/download/2.6.5a-r4n/PD-Loader-2.6.5a-r4.zip",
         "https://www.7-zip.org/a/7z2107-x64.exe"
     ]
     import time

@@ -3,7 +3,10 @@ import logging
 from platform import python_version_tuple
 from functools import wraps
 import click
-from utils._DoNothing import do_nothing
+if __package__ == "":
+    from _DoNothing import do_nothing
+else:
+    from ._DoNothing import do_nothing
 from typing import Tuple, Callable
 
 
