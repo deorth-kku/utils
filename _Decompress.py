@@ -37,16 +37,15 @@ class Decompress():
 
             self.f = open(filename, "r+b")
             self.mm = mmap.mmap(self.f.fileno(), 0, access=mmap.ACCESS_READ)
-            while True:
-                if self.mm.read(8) == b'\x37\x7a\xbc\xaf\x27\x1c\x00\x04':
-                    self.mm.seek(-8, 1)
-                    startof7z = self.mm.tell()
-                    logging.debug("found 7z header at 0x%x" % startof7z)
+            self.read_from=None
+            for i in range(len(self.mm)-8):
+                if self.mm[i:i+8] == b'\x37\x7a\xbc\xaf\x27\x1c\x00\x04':
+                    self.read_from = self.mm[i:]
+                    logging.debug("found 7z header at 0x%x" % i)
                     break
-                else:
-                    self.mm.seek(-7, 1)
-
-            self.read_from = self.mm[startof7z:]
+            if not self.read_from:
+                raise("%s is not a 7z sfx file" % filename)
+            
         else:
             self.reader = self.libarchive.file_reader
             self.extracter = self.libarchive.extract_file
